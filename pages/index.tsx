@@ -1,14 +1,16 @@
-import { ConnectWallet, useAddress, useContract, useContractRead, Web3Button } from "@thirdweb-dev/react";
+import { ConnectWallet, useAddress, useContract, useContractRead, useSDK, Web3Button } from "@thirdweb-dev/react";
 import { BigNumber, ethers } from "ethers";
 import type { NextPage } from "next";
 import { signIn, useSession } from "next-auth/react";
 import { useState } from "react";
-import { ACCOUNTABILITY_CONTRACT_ADDRESS } from "../constants/contractAddresses";
+import { ACCOUNTABILITY_CONTRACT_ADDRESS, DOMAIN_NAME, NFT_COLLECTION_ADDRESS } from '../constants/contractAddresses';
 
 const Home: NextPage = () => {
   const address = useAddress();
+  const sdk = useSDK();
   const { data: discordAuthData, status: discordAuthStatus } = useSession();
   const { contract } = useContract(ACCOUNTABILITY_CONTRACT_ADDRESS);
+  const { contract: nftCollection } = useContract(NFT_COLLECTION_ADDRESS);
   const [form, setForm] = useState({
     amount: '0',
     lockedFor: '0'
@@ -81,7 +83,28 @@ const Home: NextPage = () => {
   const canUnlock = isDiscordConnected && BigNumber.from(lockedFundsData.lockedAt).add(lockedFundsData.lockedFor).lt(BigNumber.from(Date.now().toFixed()).div(1000));
 
   const attemptWithdraw = async (contract: any) => {
-    contract.call('withdraw');
+    try {
+      const response = await fetch("/api/withdraw", {
+        method: "POST",
+        body: JSON.stringify({ userAddress: address })
+      })
+      const data = await response.json();
+
+      if (data.error) {
+        alert(data.error);
+        return;
+      };
+
+      await nftCollection?.erc721.signature.mint(data.signature);
+      const txWithdraw = await contract.call('withdraw');
+
+      await txWithdraw.wait();
+
+      alert('Success! You have unlocked your funds!')
+      console.log(data)
+    } catch (error) {
+      console.error(error)
+    }
   };
 
   return (
